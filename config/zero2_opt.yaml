@@ -1,3 +1,5 @@
+# DeepSpeed ZeRO-2 配置：供 rl.sh 的 accelerate 使用。
+# 先理解 sft/rl 单卡逻辑，再学习这里的参数切分和 bf16。
 compute_environment: LOCAL_MACHINE
 distributed_type: DEEPSPEED
 num_machines: 1

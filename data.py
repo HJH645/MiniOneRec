@@ -1,3 +1,14 @@
+"""MiniOneRec 数据集定义。
+
+阅读入口：先看 BaseDataset，再看 SidSFTDataset，最后看 RL*Dataset 和
+FusionSeqRecDataset。这个文件把 CSV/JSON 变成 Trainer 能接受的字典。
+
+核心 shape 约定：单条样本的 input_ids、attention_mask、labels 都是
+(L,)，L 是 tokenizer 后的长度；DataCollator 批处理后变成 (B, L_batch)。
+RL 数据不返回 Tensor，而是返回 prompt/completion 字符串，后续由
+minionerec_trainer.py 再 tokenize 成 (B*G, P) 和 (B*G, C)。
+"""
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -35,6 +46,7 @@ class Tokenizer:
         return self.tokenizer.decode(t)
 
 class BaseDataset(Dataset):
+    """所有 SFT/RL 数据集的共同基类；先理解 get_inputs 和 __getitem__。"""
     def __init__(self, tokenizer=None, max_len=2048, test=False, category="", dedup=False, seed=None):
         super().__init__()
         self.data = None
@@ -54,6 +66,7 @@ class BaseDataset(Dataset):
         return len(self.data)
 
     def get_inputs(self):
+        # inputs 是长度为样本数的 Python 列表；每个元素通常包含长度为 L 的 token 列表。
         inputs = []
         for i in tqdm(range(len(self.data))):
             inputs.append(self.pre(i))
@@ -352,6 +365,11 @@ class EvalD3Dataset(CSVBaseDataset):
 
 
 class SidDataset(CSVBaseDataset):
+    """RL 主推荐数据集：返回 prompt/completion 字符串，不做 tokenizer。
+
+    一条记录的历史长度为 H；prompt 是一个字符串，completion 是目标 SID。
+    ReReTrainer 会把同一 prompt 复制 G 次后再得到 (B*G,P)/(B*G,C)。
+    """
     def __init__(self, train_file, max_len=2048, sample=-1, seed=0, category="", dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer=None, test=False)
 
@@ -395,6 +413,11 @@ class SidDataset(CSVBaseDataset):
 
 
 class SidSFTDataset(CSVBaseDataset):
+    """主 SFT 数据集：用户历史 SID -> 目标 SID。
+
+    pre() 先得到不定长 token 序列 (L_raw,)，再截断为最多 max_len 的 (L,)。
+    labels 的 prompt 区域填 -100，只有目标 SID 区域参与因果语言模型 loss。
+    """
     def __init__(self, train_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", K=4, dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer, test)
 
@@ -437,6 +460,7 @@ Can you predict the next possible item that the user may expect?
         prompt = self.generate_prompt(history)
         # print("prompt: ", prompt)
 
+        # 此处仍是单条一维列表：(instruction,) + (prompt,) -> (prompt_len,)。
         tokens = tokens + self.tokenizer.encode(prompt, bos=False, eos=False)
         # print("tokens: ", tokens)
         # print("**********************")
@@ -452,6 +476,7 @@ Can you predict the next possible item that the user may expect?
         
         golden_tokens = self.tokenizer.encode(target_item, bos=False, eos=True)
         input_prompt_len = len(tokens)
+        # 拼上答案后为 (prompt_len + target_len,)，随后按 max_len 从右侧截断。
         tokens = tokens + golden_tokens
         attention_mask = [1] * len(tokens)
         labels = [-100] * input_prompt_len + tokens[input_prompt_len:]
@@ -595,6 +620,7 @@ Can you predict the next possible item that the user may expect?
 
 
 class EvalSidDataset(CSVBaseDataset):
+    """离线评估数据集：test=True 时返回未拼接答案的 input_ids=(L,)。"""
 
     def __init__(self, train_file, tokenizer, max_len=2048, sample=-1, test = False, seed=0, category="", K=4, dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer, test)
@@ -676,6 +702,11 @@ Can you predict the next possible item that the user may expect?
 
 
 class SidItemFeatDataset(JSONBaseDataset):
+    """SID 与商品标题双向辅助任务。
+
+    每个 item 产生 sid2title 和 title2sid 两类样本；tokenize 后单条仍是
+    input_ids/labels=(L,)，用于和主序列推荐任务共同做 SFT。
+    """
     def __init__(self, item_file, index_file, tokenizer=None, max_len=2048, sample=-1, test=False, seed=0, category=""):
         """
         Dataset for sid2title and title2sid tasks.
@@ -787,6 +818,7 @@ Answer the question about item identification.
 
 
 class RLTitle2SidDataset(JSONBaseDataset):
+    """RL 辅助任务：商品标题或描述 -> 目标 SID。返回纯文本 prompt/completion。"""
     def __init__(self, item_file, index_file, sample=-1, seed=0, category="", dedup=False):
         """
         RL-specific dataset for title2sid and description2sid tasks.
@@ -888,6 +920,7 @@ class RLTitle2SidDataset(JSONBaseDataset):
 
 
 class RLSeqTitle2SidDataset(CSVBaseDataset):
+    """RL 序列任务：历史商品标题序列 -> 下一商品 SID。"""
     def __init__(self, train_file, sample=-1, seed=0, category="", dedup=False):
         """
         RL-specific dataset for sequential recommendation using title sequences.
@@ -1124,6 +1157,11 @@ class RLSidhis2TitleDataset(BaseDataset):
 
 
 class FusionSeqRecDataset(BaseDataset):
+    """SFT 融合任务：历史 SID 序列 -> 目标商品标题。
+
+    它把序列推荐和自然语言商品特征放到同一 Trainer；最终 token shape
+    与 SidSFTDataset 相同，均为单条 (L)、batch 后 (B,L_batch)。
+    """
     def __init__(self, train_file, item_file, index_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", dedup=False):
         """
         Fusion dataset combining sequence recommendation with item features.

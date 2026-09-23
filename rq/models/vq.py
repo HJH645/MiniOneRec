@@ -1,3 +1,9 @@
+"""单层 VectorQuantizer：把连续向量分配到有限 codebook。
+
+阅读入口：forward。输入 x=(B,...,e_dim) 会 flatten 成 latent=(-1,e_dim)，
+距离矩阵是 (-1,n_e)，indices 是 (...,)，量化向量恢复为与 x 同形状，loss 是标量。
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -61,7 +67,7 @@ class VectorQuantizer(nn.Module):
         return centered_distances
 
     def forward(self, x, use_sk=True):
-        # Flatten input
+        # Flatten input：x=(B,e_dim) 时 latent=(B,e_dim)，更高维时保留最后维 e_dim。
         latent = x.view(-1, self.e_dim)
 
         if not self.initted and self.training:
@@ -97,5 +103,4 @@ class VectorQuantizer(nn.Module):
         indices = indices.view(x.shape[:-1])
 
         return x_q, loss, indices
-
 

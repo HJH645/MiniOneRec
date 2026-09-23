@@ -1,3 +1,9 @@
+"""合并多 GPU 评估结果。
+
+阅读入口：merge。每个 shard 是一个 JSON 列表，函数按 cuda_list 顺序把它们
+拼接成一个列表；不改变单条结果结构，也不计算指标，指标由 calc.py 完成。
+"""
+
 import fire
 import pandas as pd
 import json

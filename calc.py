@@ -1,9 +1,17 @@
+"""根据 evaluate.py 输出的候选 JSON 计算离线推荐指标。
+
+阅读入口：主函数读取每条样本的真实 item_sid 和 predict 列表，再按候选排名
+计算 HR@K 与 NDCG@K。这里不重新调用模型，输入输出都是 Python 列表/标量，
+因此适合在 CPU 上单独检查。
+"""
+
 # from transformers import GenerationConfig, LlamaForCausalLM, LlamaTokenizer
 # import transformers
 # import torch
 import os
 import fire
 import math
+
 import json
 import pandas as pd
 import numpy as np

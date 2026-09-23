@@ -1,3 +1,10 @@
+"""原始 Amazon 交互预处理。
+
+阅读入口：gao。它读取 review/metadata，按时间窗口和用户/商品最小频次过滤，
+按用户时间排序后构造最多 10 个历史商品的滑动窗口，再按时间切分 train/valid/test。
+每一条输出记录还没有 tokenizer，history 长度是 H 的 Python 列表，目标是一个商品。
+"""
+
 # based on the implementation of D3
 import fire
 from loguru import logger

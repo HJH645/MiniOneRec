@@ -1,3 +1,9 @@
+"""RQ-VAE 的最小 Dataset 封装。
+
+阅读入口：EmbDataset.__init__ 和 __getitem__。np.load 得到 embeddings=(N,D)，
+DataLoader 把若干条向量组成 batch=(B,D)；它不负责文本处理，也不负责 SID。
+"""
+
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -31,6 +37,7 @@ class EmbDataset(data.Dataset):
         self.dim = self.embeddings.shape[-1]
 
     def __getitem__(self, index):
+        # 单条样本是 (D,)；DataLoader 批处理后自动堆叠为 (B,D)。
         emb = self.embeddings[index]
         tensor_emb = torch.FloatTensor(emb)
         return tensor_emb

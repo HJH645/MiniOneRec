@@ -1,3 +1,10 @@
+"""RQ-Kmeans+ 的 SID 生成脚本（主线 RQ-VAE 之外的替代方案）。
+
+阅读入口：load_model -> generate_sids。embedding batch=(B,D)，模型输出原始
+codes=(B,L)，去重后写成 item_id -> [<a_i>, ...] 的 index.json；第一遍掌握
+rq/generate_indices.py 后再阅读本文件。
+"""
+
 import argparse
 import torch
 import torch.nn as nn

@@ -1,3 +1,10 @@
+"""Residual Quantized VAE 模型。
+
+阅读入口：forward、get_indices、compute_loss。输入 x=(B,in_dim)，encoder
+变为 (B,e_dim)，残差量化器返回 x_q=(B,e_dim)、标量 rq_loss、indices=(B,L)，
+decoder 还原 out=(B,in_dim)。get_indices 只返回索引，供生成 index.json。
+"""
+
 import numpy as np
 import torch
 from torch import nn
@@ -59,6 +66,7 @@ class RQVAE(nn.Module):
                                        dropout=self.dropout_prob,bn=self.bn)
 
     def forward(self, x, use_sk=True):
+        # x=(B,in_dim) -> z=(B,e_dim) -> x_q=(B,e_dim) -> out=(B,in_dim)。
         x = self.encoder(x)
         x_q, rq_loss, indices = self.rq(x,use_sk=use_sk)
         out = self.decoder(x_q)

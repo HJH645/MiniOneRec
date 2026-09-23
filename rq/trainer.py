@@ -1,3 +1,10 @@
+"""RQ-VAE 的训练循环和 collision rate 验证。
+
+阅读入口：_train_epoch -> RQVAE.compute_loss；_valid_epoch -> get_indices。
+训练 batch=(B,D)，模型输出 out=(B,D)、rq_loss 标量、indices=(B,L)；验证把
+每行 indices 拼成字符串，计算重复 SID 的比例。
+"""
+
 import logging
 
 import numpy as np
@@ -109,6 +116,7 @@ class Trainer(object):
                     )
 
         for batch_idx, data in enumerate(iter_data):
+            # data=(B,D)，out=(B,D)，indices=(B,L)。
             data = data.to(self.device)
             self.optimizer.zero_grad()
             out, rq_loss, indices = self.model(data)
@@ -249,7 +257,6 @@ class Trainer(object):
 
 
         return self.best_loss, self.best_collision_rate
-
 
 
 

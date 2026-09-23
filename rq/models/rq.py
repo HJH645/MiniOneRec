@@ -1,3 +1,9 @@
+"""多层残差向量量化器（Residual Vector Quantizer）。
+
+阅读入口：forward。输入 x=(B,e_dim)，每层对 residual 做一次量化并从 residual
+中减掉该层重建；最终 x_q=(B,e_dim)，all_indices=(B,L)，L 是量化层数。
+"""
+
 import torch
 import torch.nn as nn
 
@@ -37,6 +43,7 @@ class ResidualVectorQuantizer(nn.Module):
         return torch.stack(all_codebook)
 
     def forward(self, x, use_sk=True):
+        # 每层的 indices 都是 (B,)，stack 后为 (B,L)；x_q/residual 保持 (B,e_dim)。
         all_losses = []
         all_indices = []
 

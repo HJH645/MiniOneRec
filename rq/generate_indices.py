@@ -1,3 +1,10 @@
+"""根据训练好的 RQ-VAE checkpoint 为每个商品生成 SID。
+
+阅读顺序：加载 checkpoint -> EmbDataset -> RQVAE.get_indices -> collision
+检查/重算 -> 写入 index.json。输入 batch 是 (B,D)，get_indices 返回
+indices=(B,L)，L 为量化层数；写盘后每个商品对应 L 个形如 <a_i> 的字符串。
+"""
+
 import collections
 import json
 import logging

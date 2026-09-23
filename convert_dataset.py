@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-Convert dataset (Office/Industrial_and_Scientific) to MiniOneRec format with semantic IDs
+MiniOneRec 数据转换入口。
+
+阅读顺序：load_dataset -> semantic_tokens_to_id ->
+convert_interactions_to_csv -> main。输入是 item/index/inter 文件，输出是
+info 文本和 train/valid/test CSV。单行 history 长度为 H，转换后仍是 H 个
+原始 id、H 个 SID 字符串和一个目标 SID，不会在这里做 tokenizer；token shape
+要等 data.py 的 Dataset 才确定。
 """
 
 import json
@@ -66,6 +72,7 @@ def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict],
         rows = []
         user_to_longest = {}  # For train data: keep only longest sequence per user
         
+        # 每一行 .inter 应是 user_id、历史 item id 字符串、目标 item id 三列。
         for line in split_data:
             if len(line) != 3:
                 continue

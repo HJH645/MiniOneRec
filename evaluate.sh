@@ -1,3 +1,4 @@
+# MiniOneRec 离线评估脚本：split -> evaluate -> merge -> calc。
 # Industrial_and_Scientific
 # Office_Products
 for category in "Industrial_and_Scientific"

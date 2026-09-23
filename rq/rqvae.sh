@@ -1,3 +1,4 @@
+# 训练 RQ-VAE：输入商品 embedding=(N,D)，输出 checkpoint，后续由 generate_indices.py 生成 SID。
 python rqvae.py \
       --data_path ../data/Amazon/index/Industrial_and_Scientific.emb-qwen-td.npy \
       --ckpt_dir ./output/Industrial_and_Scientific \

@@ -1,4 +1,6 @@
 #!/bin/bash
+# 把 RQ 产生的 item/index/inter 文件转换为 MiniOneRec 的 train/valid/test CSV。
+# 入口实现是 convert_dataset.py:main。
 
 
 PYTHON_SCRIPT="convert_dataset.py"

@@ -1,3 +1,10 @@
+"""Amazon 2018 数据预处理入口。
+
+阅读顺序：先看命令行参数，再看 metadata/reviews 的清洗、用户/商品过滤和
+train/valid/test 输出。这里主要处理原始 JSON/JSONL；它还不产生模型 token，
+最终每条交互历史仍是长度 H 的列表，SID 转换在 convert_dataset.py 完成。
+"""
+
 import argparse
 import collections
 import gzip

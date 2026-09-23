@@ -1,3 +1,11 @@
+"""把商品标题和描述编码成可供 RQ-VAE 使用的 dense embedding。
+
+阅读入口：preprocess_text -> generate_item_embedding。tokenizer 输入是
+input_ids=(B,T)、attention_mask=(B,T)，Transformer 输出 last_hidden_state
+=(B,T,D)，masked mean pooling 后变成 mean_output=(B,D)，所有商品拼接保存
+为 .npy 的 (N,D)；当前样例是 (3686,2560)。
+"""
+
 import argparse
 import collections
 import json
@@ -103,7 +111,7 @@ def generate_item_embedding(args, item_text_list, tokenizer, model, accelerator,
             input_ids = encoded_sentences.input_ids
             attention_mask = encoded_sentences.attention_mask
 
-            # Model Forward
+            # Model Forward：input_ids=(B,T)，last_hidden_state=(B,T,D)。
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
             # Mean Pooling (Masked)
@@ -116,7 +124,7 @@ def generate_item_embedding(args, item_text_list, tokenizer, model, accelerator,
             sum_embeddings = torch.sum(last_hidden * mask_expanded, dim=1)
             sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
             
-            mean_output = sum_embeddings / sum_mask # [batch, dim]
+            mean_output = sum_embeddings / sum_mask # (B,T,D) -> (B,D)
             
             # return to CPU Numpy
             mean_output = mean_output.cpu().numpy()

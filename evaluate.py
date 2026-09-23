@@ -1,3 +1,10 @@
+"""MiniOneRec 离线生成评估入口。
+
+阅读顺序：main 中读取 info 并建立前缀表 -> EvalSidDataset -> 内部 evaluate
+函数。每条样本 input_ids 原本是 (L_i,)，一个 batch 左 padding 为 (B,maxLen)，
+beam 生成得到 sequences=(B*num_beams,maxLen+newTokens)，切掉 prompt 后按
+num_beams 分组为候选列表，结果写入 JSON 供 calc.py 计算 HR/NDCG。
+"""
 
 import pandas as pd
 import fire
@@ -156,6 +163,7 @@ def main(
             length_penalty=1.0,
             **kwargs,
     ):
+        # 先找 batch 内最大 prompt 长度；所有样本会左侧 pad 到 (B,maxLen)。
         maxLen = max([len(_["input_ids"]) for _ in encodings])
 
         padding_encodings = {"input_ids": []}
@@ -207,6 +215,7 @@ def main(
                 logits_processor=logits_processor,
             )
        
+        # sequences=(B*num_beams,maxLen+newTokens)，这里只保留新生成的后缀。
         batched_completions = generation_output.sequences[:, maxLen:]
        
         
@@ -247,8 +256,6 @@ def main(
 
 if __name__ == '__main__':
     fire.Fire(main)
-
-
 
 
 

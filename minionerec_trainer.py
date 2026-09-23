@@ -1,3 +1,15 @@
+"""MiniOneRec 的 GRPO 训练器实现。
+
+这不是推荐模型本身，而是把 HuggingFace Trainer 改造成“生成多个 SID 候选、
+计算推荐奖励、按组归一化并更新语言模型”的训练循环。建议先读
+_prepare_inputs，再读 _get_per_token_logps，最后读 compute_loss。
+
+关键 shape：prompt_ids=(B*G,P)、completion_ids=(B*G,C)，拼接输入为
+(B*G,P+C)；log-prob 和 KL 为 (B*G,C)；reward/advantage 为 (B*G,)。
+约束生成由 LogitProcessor.py 完成，prefix_allowed_tokens_fn 把已生成前缀
+映射为合法的下一个 SID token。
+"""
+
 # Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

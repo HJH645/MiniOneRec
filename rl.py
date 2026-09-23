@@ -1,3 +1,10 @@
+"""MiniOneRec 推荐导向强化学习入口。
+
+阅读顺序：train -> reward 函数 -> ReReTrainer。train_dataset 中每个 prompt
+会按 num_generations=G 重复；Trainer 生成后使用 prompt_ids=(B*G,P)、
+completion_ids=(B*G,C)，奖励是 (B*G,)，再 reshape 为 (B,G) 做组内归一化。
+"""
+
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 import random
@@ -67,6 +74,7 @@ def train(
     dapo: bool = False,
     gspo: bool = False,
 ):
+    # rl.sh 通过 accelerate 启动这里；不要把本函数和传统 sasrec.py 训练入口混淆。
     torch.backends.cuda.enable_flash_sdp(False)  
     torch.backends.cuda.enable_mem_efficient_sdp(False)
     set_seed(seed)

@@ -1,4 +1,6 @@
 #!/bin/bash
+# MiniOneRec 推荐导向 RL 启动脚本：accelerate/deepspeed 调用 rl.py。
+# num_generations 必须能整除全局 batch；beam_search 控制是否使用约束 beam。
 
 export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 

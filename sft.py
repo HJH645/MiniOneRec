@@ -1,3 +1,12 @@
+"""MiniOneRec 的监督微调（SFT）入口。
+
+阅读顺序：TokenExtender -> train 中的模型/Tokenizer 加载 -> 三个 Dataset
+拼接 -> transformers.Trainer。单条 Dataset 样本的 token shape 是 (L,)，
+DataCollator 后是 input_ids/attention_mask/labels=(B, L_batch)，语言模型
+logits 通常是 (B, L_batch, V)。如果 freeze_LLM=True，只让新增 SID 词表行
+更新，新增前后的 embedding shape 为 (V_old,H) -> (V_old+V_sid,H)。
+"""
+
 import os
 import sys
 from typing import List
@@ -28,6 +37,7 @@ from torch.utils.data import ConcatDataset
 
 
 class TokenExtender:
+    """从 index.json 收集去重后的 <a_i>/<b_j>/<c_k> token。"""
     def __init__(self, data_path, dataset, index_file=".index.json"):
         self.data_path = data_path
         self.dataset = dataset
@@ -114,6 +124,7 @@ def train(
     sid_index_path: str = "",
     item_meta_path: str = "",
 ):
+    # 这是 SFT 的唯一命令行入口；sft.sh 负责提供大部分参数。
     set_seed(seed)
     os.environ['WANDB_PROJECT'] = wandb_project
     category_dict = {"Industrial_and_Scientific": "industrial and scientific items", "Office_Products": "office products", "Toys_and_Games": "toys and games", "Sports": "sports and outdoors", "Books": "books"}
@@ -201,6 +212,7 @@ def train(
     # train_datasets.append(train_data4)
     # train_data5 = TitleHistory2SidSFTDataset(train_file=train_file, item_file=item_meta_path, index_file=sid_index_path, tokenizer=tokenizer, max_len=cutoff_len, sample=sample, seed=seed, category=category)
     # train_datasets.append(train_data5)
+    # 三种任务样本按长度拼接；ConcatDataset 的长度是三者长度之和，单条字段形状不变。
     train_data = ConcatDataset(train_datasets)
     val_data = SidSFTDataset(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
     # val_data = SFTData(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=20000, seed=seed, category=category)

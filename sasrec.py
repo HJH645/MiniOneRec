@@ -1,9 +1,17 @@
+"""传统序列推荐模型支线，主要被 rl.py 的 cf_reward 作为可选奖励模型调用。
+
+第一遍先看 SASRec.forward_eval：states=(B,S)，Embedding 后为 (B,S,H)，
+经过注意力和前馈仍保持 (B,S,H)，gather 最后有效位置得到 (B,1,H)，
+线性层输出商品分数 (B,item_num)。GRU/Caser 是可替代基线，不是 MiniOneRec 主线。
+"""
+
 import numpy as np
 import pandas as pd
 import argparse
 import torch
 from torch import nn
 import torch.nn.functional as F
+
 import os
 import logging
 import time as Time
@@ -652,4 +660,3 @@ if __name__ == '__main__':
     torch.save(best_model.state_dict(), result_folder + f"/best_{args.data}_{args.model}_emb{args.hidden_factor}_bs{args.batch_size}_lr{args.lr}_decay{args.l2_decay}_seed{args.seed}_loss_{args.loss_type}_dropout{args.dropout_rate}_state.pth")
 
     evaluate_games(best_model, data_file_test, device, topk, save_logits=True, eval_type="test")
-

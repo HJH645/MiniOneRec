@@ -1,3 +1,5 @@
+# MiniOneRec SFT 启动脚本：读取 train/valid/test 和 SID 索引，调用 sft.py。
+# 先阅读这里的参数，再进入 sft.py:train；默认需要 8 张 GPU。
 export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 # Office_Products, Industrial_and_Scientific
 for category in "Industrial_and_Scientific"; do

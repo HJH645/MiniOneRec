@@ -1,3 +1,9 @@
+"""把测试 CSV 均匀切分为多个 GPU shard。
+
+阅读入口：split。输入 DataFrame 可理解为 (N, 字段数)，按行区间切成多个
+CSV；它不改变字段内容，也不做随机打乱（对应代码中的注释行为）。
+"""
+
 import fire
 import os
 import pandas as pd

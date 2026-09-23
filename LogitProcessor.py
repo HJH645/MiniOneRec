@@ -1,3 +1,11 @@
+"""约束解码的 logits 处理器。
+
+阅读入口：ConstrainedLogitsProcessor.__call__。无 beam 时 input_ids=(B,L)、
+scores=(B,V)；有 K 个 beam 时 Transformers 展平为 (B*K,L)/(B*K,V)。处理器
+根据已生成前缀查允许 token，合法位置加 0、非法位置保留 -inf，返回同形状
+(B*K,V) 的分数。count 表示当前生成步，每次 generate 前应创建新实例。
+"""
+
 from transformers.generation import LogitsProcessor
 from transformers import AutoTokenizer
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -43,6 +51,7 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
     
     @add_start_docstrings(LOGITS_PROCESSOR_INPUTS_DOCSTRING)
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        # input_ids=(B*K,L)，scores=(B*K,V)；mask 必须与 scores 完全同形状。
         scores = torch.nn.functional.log_softmax(scores, dim=-1)
         mask = torch.full_like(scores, float('-inf'))
             

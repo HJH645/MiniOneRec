@@ -1,3 +1,10 @@
+"""RQ-VAE 训练启动脚本。
+
+阅读顺序：parse_args -> EmbDataset -> RQVAE -> Trainer.fit。输入 embedding
+batch 是 (B,D)，RQVAE 输出重建向量 (B,D)、量化 loss 标量和 indices=(B,L)，
+其中 L=len(num_emb_list)，当前默认 L=3。
+"""
+
 import argparse
 import random
 import torch
@@ -83,6 +90,7 @@ if __name__ == '__main__':
                   sk_iters=args.sk_iters,
                   )
     print(model)
+    # DataLoader 把 EmbDataset 的 (D,) 单条向量堆成 (B,D)。
     data_loader = DataLoader(data,num_workers=args.num_workers,
                              batch_size=args.batch_size, shuffle=True,
                              pin_memory=True)
@@ -91,4 +99,3 @@ if __name__ == '__main__':
 
     print("Best Loss",best_loss)
     print("Best Collision Rate", best_collision_rate)
-
