@@ -1,3 +1,13 @@
+"""GPR/HEPO 版本的强化学习入口。
+
+它在主线 GRPO 流程上加入层次化策略优化；主线学习请先阅读 rl.py 和
+minionerec_trainer.py。
+
+GPR 支线：从 train 的 reward_type 选择开始，再看 hepo_reward 如何拆分
+SID 层级奖励，最后追到 ReReTrainer。与 rl.py 对照时先比较奖励定义，
+不要把两个文件的训练入口同时执行。
+"""
+
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 import random

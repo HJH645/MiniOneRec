@@ -1,3 +1,9 @@
+"""数据集与 prompt 格式的轻量检查脚本。
+
+运行本文件可快速验证 CSV 字段、SID 字符串和 Dataset 输出，
+适合在启动大规模训练前定位数据格式问题。
+"""
+
 import unittest
 import tempfile
 import os

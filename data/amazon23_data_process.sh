@@ -1,4 +1,8 @@
 #!/bin/bash
+# 阅读导航：
+# 先看原始 Amazon23 数据路径、时间范围和输出目录，再进 amazon23_data_process.py 的主入口。
+# 其任务是将 Amazon23 的字段与时间戳整理为下游可读的交互和商品文件；这里还不生成 SID。
+# Amazon23 数据预处理启动脚本：调用 amazon23_data_process.py 完成格式转换和切分。
 
 python amazon23_data_process.py \
     --dataset {domain} \

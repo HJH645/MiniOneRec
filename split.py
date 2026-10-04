@@ -2,6 +2,9 @@
 
 阅读入口：split。输入 DataFrame 可理解为 (N, 字段数)，按行区间切成多个
 CSV；它不改变字段内容，也不做随机打乱（对应代码中的注释行为）。
+
+从 split 函数看：读 test.csv，按 GPU 编号数切连续行区间，保存编号.csv。
+它既不随机打乱，也不改变 SID；evaluate.sh 使用相同编号启动子进程。
 """
 
 import fire

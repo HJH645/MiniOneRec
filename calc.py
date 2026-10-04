@@ -3,6 +3,10 @@
 阅读入口：主函数读取每条样本的真实 item_sid 和 predict 列表，再按候选排名
 计算 HR@K 与 NDCG@K。这里不重新调用模型，输入输出都是 Python 列表/标量，
 因此适合在 CPU 上单独检查。
+
+从 gao 开始：读取 info 文本建立合法商品集合，遍历评估 JSON 的目标 SID
+和 predict 候选，查命中位置并累积 HR@K、NDCG@K。先手算一条候选的
+名次与折损增益，再检查代码对非法候选和未命中的处理。
 """
 
 # from transformers import GenerationConfig, LlamaForCausalLM, LlamaTokenizer
@@ -18,6 +22,12 @@ import numpy as np
     
 from tqdm import tqdm
 def gao(path, item_path):
+    """读取评估 JSON 的 output/predict，计算命中率和折损增益。
+
+    path 可为单个或多个结果文件；item_path 是三列 info 文本。每条记录
+    从 predict 中取目标首次出现的名次，按 topk_list 累积指标；CC 统计
+    遇到的非法候选（在首次命中目标之前）。这里输出的是控制台指标。
+    """
     if type(path) != list:
         path = [path]
     if item_path.endswith(".txt"):
@@ -64,6 +74,7 @@ def gao(path, item_path):
                 target_item = test_data[index]['output'][0].strip("\"").strip(" ")
             else:
                 target_item = test_data[index]['output'].strip(" \n\"")
+            # 首次命中的零基排名；未命中保留大哨兵值，所有 Top-K 均记 0。
             minID = 1000000
             for i in range(len(sample)):
                 

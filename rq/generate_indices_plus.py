@@ -3,6 +3,10 @@
 阅读入口：load_model -> generate_sids。embedding batch=(B,D)，模型输出原始
 codes=(B,L)，去重后写成 item_id -> [<a_i>, ...] 的 index.json；第一遍掌握
 rq/generate_indices.py 后再阅读本文件。
+
+从 parse_args → load_model → generate_sids 看 embedding 如何经过增强模型
+得到 codes；deal_with_deduplicate 处理重复 SID，analyze_duplication
+统计碰撞，再写 item→SID 索引。输出格式需与 convert_dataset.py 对齐。
 """
 
 import argparse

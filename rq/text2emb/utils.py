@@ -1,3 +1,13 @@
+"""商品文本 embedding 支线的公共预处理工具。
+
+本文件集中处理文本清洗、模型加载和通用序列化辅助逻辑；主流程由
+amazon_text2emb.py 调用，最终输出商品级 dense embedding。
+
+主线文本向量只需先看 load_json 与 clean_text，它们由
+amazon_text2emb.py 读取和清洗商品文本时调用。文件前半的 API batch
+函数属于额外文本生成/丰富支线；按需从调用点进入。
+"""
+
 import html
 import json
 import os

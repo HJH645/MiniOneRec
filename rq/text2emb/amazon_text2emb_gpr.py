@@ -1,3 +1,13 @@
+"""GPR 版本的商品文本 embedding 入口。
+
+它在 title/description 编码流程上服务 GPR 特征抽取；主线文本向量流程
+请先阅读 amazon_text2emb.py。
+
+GPR 文本向量支线：从末尾入口进入，依次看商品特征读取、文本拼接、
+编码器推理和 embedding 保存；对照 amazon_text2emb.py 找新增特征
+及输出文件名，确认下游 GPR 脚本读取的是同一版本。
+"""
+
 import argparse
 import collections
 import json

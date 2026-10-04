@@ -7,6 +7,15 @@ FusionSeqRecDataset。这个文件把 CSV/JSON 变成 Trainer 能接受的字典
 (L,)，L 是 tokenizer 后的长度；DataCollator 批处理后变成 (B, L_batch)。
 RL 数据不返回 Tensor，而是返回 prompt/completion 字符串，后续由
 minionerec_trainer.py 再 tokenize 成 (B*G, P) 和 (B*G, C)。
+
+第一次只读五处：BaseDataset.get_inputs/__getitem__ → CSVBaseDataset.__init__ →
+SidSFTDataset.__init__/get_history/pre → EvalSidDataset.pre → SidDataset.pre。
+CSVBaseDataset 把 CSV 放在 self.data；子类 __init__ 调 get_inputs，逐行执行
+pre 并缓存到 self.inputs；Trainer 取 dataset[i] 实际拿到缓存的字典。
+SFT 的 pre 拼 instruction、历史 prompt 和目标 SID，把 prompt 对应 label
+置 -100；test=True 只返回 prompt。RL 的 SidDataset 则返回 prompt/completion
+字符串，由 minionerec_trainer.py 再 tokenize。其余类是标题、商品特征及 GPR
+任务变体，理解主推荐链后再看。
 """
 
 import pandas as pd
@@ -21,6 +30,7 @@ import os
 import copy
 import torch.nn.functional as F
 
+# 阅读入口：encode 统一剥离底层 tokenizer 自动加入的 BOS/EOS，再按调用参数补回。
 class Tokenizer:
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
@@ -46,7 +56,12 @@ class Tokenizer:
         return self.tokenizer.decode(t)
 
 class BaseDataset(Dataset):
-    """所有 SFT/RL 数据集的共同基类；先理解 get_inputs 和 __getitem__。"""
+    """所有数据集的共同调用约定。
+
+    子类在 __init__ 中设置 self.data，再调用 get_inputs；get_inputs 对每个
+    行号调用子类 pre 并缓存到 self.inputs。训练框架的 dataset[i] 只从缓存取
+    字典，不在每个 step 重新拼 prompt。阅读任何子类先找 __init__/pre。
+    """
     def __init__(self, tokenizer=None, max_len=2048, test=False, category="", dedup=False, seed=None):
         super().__init__()
         self.data = None
@@ -97,6 +112,7 @@ class BaseDataset(Dataset):
 ### Response:\n{data_point["output"]}"""
 
 
+# CSV 家族：一行 CSV 是一个样本；Pandas 将列表列读成字符串，子类 get_history 再解析。
 class CSVBaseDataset(BaseDataset):    
     def __init__(self, train_file, sample=-1, seed=0, max_len=2048, category="", dedup=False, tokenizer=None, test=False):
         super().__init__(tokenizer, max_len, test, category, dedup, seed)
@@ -107,6 +123,7 @@ class CSVBaseDataset(BaseDataset):
             self.data = self.data.sample(sample, random_state=seed)
 
 
+# JSON 家族：读商品元数据和 item→SID 索引，供 SID↔标题等辅助任务使用。
 class JSONBaseDataset(BaseDataset):
     def __init__(self, item_file=None, index_file=None, tokenizer=None, max_len=2048, test=False, category="", dedup=False, seed=None):
         super().__init__(tokenizer, max_len, test, category, dedup, seed)
@@ -174,6 +191,7 @@ class SFTData(CSVBaseDataset):
         
         history = self.get_history(self.data.iloc[idx])
         target_item = history['output']
+        # 生成 prompt 前清空答案，避免目标 SID 出现在输入中造成标签泄漏。
         history['output'] = ''
         negative_prompt_ids = copy.deepcopy(tokens)
         
@@ -198,6 +216,7 @@ class SFTData(CSVBaseDataset):
         input_prompt_len = len(tokens)
         tokens = tokens + golden_tokens
         attention_mask = [1] * len(tokens)
+        # -100 被 Causal LM 损失忽略；仅答案 token 和 EOS 保留监督。
         labels = [-100] * input_prompt_len + tokens[input_prompt_len:]
         
         if len(tokens) >= self.max_len:
@@ -212,6 +231,7 @@ class SFTData(CSVBaseDataset):
         }
 
 
+# 旧版标题推荐 RL 任务：history_item_title→item_title；默认主线使用 SidDataset。
 class D3Dataset(CSVBaseDataset):
     def __init__(self, train_file, max_len=2048, sample=-1, seed=0, category="", dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer=None, test=False)
@@ -364,6 +384,7 @@ class EvalD3Dataset(CSVBaseDataset):
         }
 
 
+# 默认 RL 主任务：从 CSV 取历史 SID 和目标 SID，返回纯字符串而非 token id。
 class SidDataset(CSVBaseDataset):
     """RL 主推荐数据集：返回 prompt/completion 字符串，不做 tokenizer。
 
@@ -378,6 +399,7 @@ class SidDataset(CSVBaseDataset):
         self.get_inputs()  
 
     def get_history(self, row):
+        # CSV 把 Python 列表保存为字符串；这里恢复成历史 SID 列表。只对可信文件使用 eval。
         row['history_item_sid'] = eval(row['history_item_sid'])
         L = len(row['history_item_sid']) 
         history = ""
@@ -412,6 +434,7 @@ class SidDataset(CSVBaseDataset):
         }
 
 
+# 默认 SFT 主任务：从 CSV 取历史 SID 和目标 SID，拼 prompt 并构造 labels。
 class SidSFTDataset(CSVBaseDataset):
     """主 SFT 数据集：用户历史 SID -> 目标 SID。
 
@@ -424,6 +447,7 @@ class SidSFTDataset(CSVBaseDataset):
         self.get_inputs()
 
     def get_history(self, row):
+        # CSV 列表字段读入后是字符串；恢复为历史 SID 列表以保持原有时间顺序。
         row['history_item_sid'] = eval(row['history_item_sid'])
         L = len(row['history_item_sid']) 
         history = ""
@@ -454,6 +478,7 @@ Can you predict the next possible item that the user may expect?
         # print("**********************")
         # print("history: ", history)
         target_item = history['output']
+        # prompt 中留空答案；目标 SID 只在后面的 golden_tokens 中出现。
         history['output'] = ''
         negative_prompt_ids = copy.deepcopy(tokens)
         
@@ -479,6 +504,7 @@ Can you predict the next possible item that the user may expect?
         # 拼上答案后为 (prompt_len + target_len,)，随后按 max_len 从右侧截断。
         tokens = tokens + golden_tokens
         attention_mask = [1] * len(tokens)
+        # prompt 标签为 -100，被损失函数忽略；右侧目标 SID/EOS 才受监督。
         labels = [-100] * input_prompt_len + tokens[input_prompt_len:]
         
         if len(tokens) >= self.max_len:
@@ -491,6 +517,7 @@ Can you predict the next possible item that the user may expect?
         }
 
 
+# GPR 的 SFT 变体：在主 SID 任务外读附加用户/商品特征。
 class SidSFTDataset_GPR(CSVBaseDataset):
     def __init__(self, train_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", K=4, dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer, test)
@@ -619,8 +646,14 @@ Can you predict the next possible item that the user may expect?
         }
 
 
+# 评估任务：test=True 时不能把目标 SID 放进输入，否则会泄漏答案。
 class EvalSidDataset(CSVBaseDataset):
-    """离线评估数据集：test=True 时返回未拼接答案的 input_ids=(L,)。"""
+    """离线评估 Dataset：CSV 行 → 历史 SID prompt → token id。
+
+    get_history 解析 history_item_sid 字符串；pre 在 test=True 时只返回
+    input_ids/attention_mask，不把目标 SID 填进输入。get_all 另外返回含真实
+    目标的字典，供 evaluate.py 把预测候选与答案写在同一条 JSON 记录中。
+    """
 
     def __init__(self, train_file, tokenizer, max_len=2048, sample=-1, test = False, seed=0, category="", K=4, dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer, test)
@@ -701,6 +734,7 @@ Can you predict the next possible item that the user may expect?
         }
 
 
+# SFT 辅助任务：用商品 JSON 和索引 JSON 构造 SID 与自然语言的双向对齐样本。
 class SidItemFeatDataset(JSONBaseDataset):
     """SID 与商品标题双向辅助任务。
 
@@ -817,6 +851,7 @@ Answer the question about item identification.
         }
 
 
+# RL 辅助任务：从商品标题/描述生成 SID；输出结构仍是 prompt/completion。
 class RLTitle2SidDataset(JSONBaseDataset):
     """RL 辅助任务：商品标题或描述 -> 目标 SID。返回纯文本 prompt/completion。"""
     def __init__(self, item_file, index_file, sample=-1, seed=0, category="", dedup=False):
@@ -919,6 +954,7 @@ class RLTitle2SidDataset(JSONBaseDataset):
         }
 
 
+# RL 辅助任务：输入历史商品标题序列，目标为下一商品 SID。
 class RLSeqTitle2SidDataset(CSVBaseDataset):
     """RL 序列任务：历史商品标题序列 -> 下一商品 SID。"""
     def __init__(self, train_file, sample=-1, seed=0, category="", dedup=False):
@@ -999,6 +1035,7 @@ class RLSeqTitle2SidDataset(CSVBaseDataset):
         }
 
 
+# 备用 RL 辅助任务：由 SID 生成商品标题；默认 rl.py 中此数据集被注释。
 class RLSid2TitleDataset(JSONBaseDataset):
     def __init__(self, item_file, index_file, sample=-1, seed=0, category="", dedup=False):
         """
@@ -1069,6 +1106,7 @@ class RLSid2TitleDataset(JSONBaseDataset):
         }
 
 
+# 备用 RL 辅助任务：由历史 SID 生成目标标题；默认 rl.py 中此数据集被注释。
 class RLSidhis2TitleDataset(BaseDataset):
     def __init__(self, train_file, item_file, index_file, sample=-1, seed=0, category="", dedup=False):
         """
@@ -1156,6 +1194,7 @@ class RLSidhis2TitleDataset(BaseDataset):
         }
 
 
+# SFT 融合任务：同一训练入口里加入 SID 序列与自然语言商品信息的对齐任务。
 class FusionSeqRecDataset(BaseDataset):
     """SFT 融合任务：历史 SID 序列 -> 目标商品标题。
 
@@ -1318,7 +1357,7 @@ class FusionSeqRecDataset(BaseDataset):
 ### Instruction:
 Can you recommend the next item for the user based on their interaction history?
 
-"""  
+"""
         tokens = self.tokenizer.encode(instruction, bos=True, eos=False)
         
         history_data = self.get_history(self.data.iloc[idx])
@@ -1367,6 +1406,7 @@ Can you recommend the next item for the user based on their interaction history?
         }
 
 
+# 备用 SFT 任务：历史标题→SID；默认 sft.py 中此数据集被注释。
 class TitleHistory2SidSFTDataset(BaseDataset):
     def __init__(self, train_file, item_file, index_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", dedup=False):
         """
@@ -1483,6 +1523,7 @@ Based on the user's historical interaction with item titles, predict the semanti
         }
 
 
+# 用户偏好文本任务：先将历史商品转换为 SID，再构造偏好监督样本。
 class PreferenceSFTDataset(BaseDataset):
     def __init__(self, user_preference_file, index_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", dedup=False):
         """
@@ -1664,6 +1705,7 @@ Analyze the user's interaction history, provide insights about their preferences
         }
 
 
+# 偏好→SID 任务：先准备偏好与商品序列，再返回监督训练所需 token 字典。
 class UserPreference2sidSFTDataset(BaseDataset):
     def __init__(self, user_preference_file, index_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", dedup=False):
         """

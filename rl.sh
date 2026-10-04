@@ -1,4 +1,8 @@
 #!/bin/bash
+# 阅读导航：
+# 阅读顺序：先核对 SFT checkpoint 和 CSV/info/index/item 文件，再看 accelerate 配置和 rl.py:train。
+# --num_generations=16 表示每条 prompt 生成 16 个候选；--reward_type ranking 对应 rl.py 的排名奖励选择。
+# --beam_search True 启用约束候选生成；--beta 控制参考模型 KL 项；配置文件负责 8 进程 DeepSpeed。
 # MiniOneRec 推荐导向 RL 启动脚本：accelerate/deepspeed 调用 rl.py。
 # num_generations 必须能整除全局 batch；beam_search 控制是否使用约束 beam。
 

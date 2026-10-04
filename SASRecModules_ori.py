@@ -1,3 +1,13 @@
+"""SASRec 原始模块实现。
+
+这里保存传统序列推荐基线的注意力和前馈组件；它用于理解 sasrec.py，
+不是 SID 生成或语言模型训练的核心模块。
+
+传统 SASRec 的网络组件：先看 MultiHeadAttention.forward 的 query/key
+维度与 causal mask，再看 PositionwiseFeedForward.forward；最后回到
+sasrec.py 看它们如何串成 SASRec。主线 RL 只在选 CF reward 时涉及它们。
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

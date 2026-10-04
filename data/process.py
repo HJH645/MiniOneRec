@@ -3,6 +3,10 @@
 阅读入口：gao。它读取 review/metadata，按时间窗口和用户/商品最小频次过滤，
 按用户时间排序后构造最多 10 个历史商品的滑动窗口，再按时间切分 train/valid/test。
 每一条输出记录还没有 tokenizer，history 长度是 H 的 Python 列表，目标是一个商品。
+
+旧版预处理对照：从 gao 进入，找原始评论过滤、用户时间排序、
+历史滑窗和文件写出。与 amazon18_data_process.py 对照时重点看时间过滤
+和输出格式，切勿把两个文件的入口混作同一次运行。
 """
 
 # based on the implementation of D3

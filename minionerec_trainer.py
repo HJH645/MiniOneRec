@@ -8,6 +8,13 @@ _prepare_inputs，再读 _get_per_token_logps，最后读 compute_loss。
 (B*G,P+C)；log-prob 和 KL 为 (B*G,C)；reward/advantage 为 (B*G,)。
 约束生成由 LogitProcessor.py 完成，prefix_allowed_tokens_fn 把已生成前缀
 映射为合法的下一个 SID token。
+
+这是较长的训练器。先从 ReReTrainer.__init__ 找 num_generations、奖励函数
+和参考模型的保存方式；再按训练时序读 RepeatRandomSampler →
+_prepare_inputs（重复 prompt、生成候选、算奖励/advantage）→
+_get_per_token_logps → compute_loss（策略项与 KL 项）。
+约束解码相关逻辑位于 prefix_allowed_tokens_fn 与 _prepare_inputs 的生成分支；
+第一次只跟当前配置启用的分支，vLLM、DAPO、GSPO 留到第二遍。
 """
 
 # Copyright 2025 The HuggingFace Team. All rights reserved.
@@ -675,6 +682,11 @@ class ReReTrainer(Trainer):
             llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
             llm_model.load_weights(state_dict.items())
     def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+        """一批 prompt → 候选 token → 奖励/优势/参考 log 概率。
+
+        此方法在算 loss 前调用；返回的 prompt_ids、completion_ids 和 mask
+        都按 B*G 排列。首次阅读先跳过 vLLM 与动态采样分支。
+        """
         device = self.accelerator.device
         prompts = [x["prompt"] for x in inputs]
 
@@ -944,6 +956,7 @@ class ReReTrainer(Trainer):
         num_unique_tokens = len(total_ids)
         token_diversity = num_unique_tokens / num_tokens if num_tokens > 0 else 0.0
 
+        # 列是奖励函数，行是每条生成候选；之后按 reward_weights 加权求和。
         rewards_per_func = torch.zeros(len(prompts), len(self.reward_funcs), device=device)
         for i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes)
@@ -975,6 +988,7 @@ class ReReTrainer(Trainer):
         rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
 
         # Compute grouped-wise rewards
+        # 每 G 行属于同一原始 prompt；组内均值/标准差用于计算相对优势。
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
         std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
 
@@ -1045,6 +1059,11 @@ class ReReTrainer(Trainer):
     
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        """只对 completion token 计算策略项，并用参考模型 KL 约束更新。
+
+        _prepare_inputs 已经给出 advantage 和参考 log 概率；这里重新运行
+        当前模型，按 completion_mask 排除 EOS 后 padding，再按配置聚合 loss。
+        """
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
 

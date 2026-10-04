@@ -2,6 +2,9 @@
 
 阅读入口：merge。每个 shard 是一个 JSON 列表，函数按 cuda_list 顺序把它们
 拼接成一个列表；不改变单条结果结构，也不计算指标，指标由 calc.py 完成。
+
+从 merge 函数看：按 cuda_list 的顺序读取各编号.json，把列表相接并写
+final_result JSON。这里只合并候选，不对结果重新排序或计算指标。
 """
 
 import fire

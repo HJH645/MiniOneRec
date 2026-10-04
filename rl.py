@@ -3,6 +3,12 @@
 阅读顺序：train -> reward 函数 -> ReReTrainer。train_dataset 中每个 prompt
 会按 num_generations=G 重复；Trainer 生成后使用 prompt_ids=(B*G,P)、
 completion_ids=(B*G,C)，奖励是 (B*G,)，再 reshape 为 (B,G) 做组内归一化。
+
+从 train 看 info 文件、三种 RL Dataset 和 reward_type 的选择；
+ndcg_rule_reward/rule_reward/semantic_reward/cf_reward 都是 Trainer 可调用
+的奖励函数，不会在同一次训练中自动全部相加。接着看 ReReTrainer 的实例化
+和 train()：一条 prompt 生成 G 个 completion，奖励按 G 分组归一化。
+先跟默认 rule 或 ndcg 分支；semantic 与 sasrec 需要额外 embedding/checkpoint。
 """
 
 from datasets import Dataset
@@ -74,6 +80,11 @@ def train(
     dapo: bool = False,
     gspo: bool = False,
 ):
+    """GRPO 训练入口：准备任务数据、选奖励函数、配置并启动 ReReTrainer。
+
+    输入是 SFT checkpoint、CSV、info/index/item 文件；reward_type 选择
+    rule、ranking、semantic 或 sasrec 等具体奖励分支。
+    """
     # rl.sh 通过 accelerate 启动这里；不要把本函数和传统 sasrec.py 训练入口混淆。
     torch.backends.cuda.enable_flash_sdp(False)  
     torch.backends.cuda.enable_mem_efficient_sdp(False)
@@ -90,6 +101,7 @@ def train(
         item2id = {name: i for i, name in enumerate(item_name)}
 
     sample = -1
+    # 将主推荐和两个自然语言辅助任务合成一份 RL 数据；每条是 prompt/completion。
     train_datasets = []
     # train_data = D3Dataset(train_file, category=category_dict[category], sample=sample)
     # train_datasets.append(train_data)
@@ -254,6 +266,7 @@ def train(
     
 
 
+    # reward_type 决定实际传给训练器的奖励函数；ranking 使用 rule 与 ndcg 两项。
     if reward_type == "rule":
         reward_fun = rule_reward
     elif reward_type == "ranking":
@@ -268,6 +281,7 @@ def train(
     os.environ['WANDB_PROJECT'] = wandb_project
     os.environ["WANDB_MODE"] = "offline"
 
+    # num_generations 决定每条 prompt 的候选组大小；beta 是参考模型 KL 权重。
     training_args = GRPOConfig(output_dir=output_dir,
                                 save_steps=0.1,
                                 save_total_limit=20,

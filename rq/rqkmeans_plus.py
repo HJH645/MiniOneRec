@@ -1,3 +1,13 @@
+"""RQ-Kmeans+ SID 构造训练脚本。
+
+这是 RQ-VAE 之外的替代算法，阅读时重点关注 codebook、残差和冲突消解；
+默认主线仍从 rq/rqvae.py 开始。
+
+RQ-Kmeans+ 训练路线：从末尾主入口看 checkpoint 与 codebook 路径，
+再进 apply_rqkmeans_plus_strategy 看如何更新模型量化策略；产出的模型
+由 generate_indices_plus.py 读取。先确认输入维度和码本形状。
+"""
+
 import argparse
 import random
 import torch

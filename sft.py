@@ -5,6 +5,13 @@
 DataCollator 后是 input_ids/attention_mask/labels=(B, L_batch)，语言模型
 logits 通常是 (B, L_batch, V)。如果 freeze_LLM=True，只让新增 SID 词表行
 更新，新增前后的 embedding shape 为 (V_old,H) -> (V_old+V_sid,H)。
+
+从 train 开始看：加载模型/tokenizer → TokenExtender.get_new_tokens 从
+index.json 收集 SID token → resize_token_embeddings → 构建三类 Dataset
+并拼接 → DataCollator/Trainer 开始训练。回头看 TokenExtender 的文件读取，
+再看 freeze_LLM 分支如何冻结旧参数并屏蔽旧词表行的梯度。
+最小检查：拿 SidSFTDataset 的一条样本，核对 input_ids 与 labels 等长，
+prompt 区域为 -100，答案区域才计算 causal LM loss。
 """
 
 import os
@@ -124,6 +131,11 @@ def train(
     sid_index_path: str = "",
     item_meta_path: str = "",
 ):
+    """SFT 训练入口：扩词表、构建三类监督数据、配置 Trainer 并保存模型。
+
+    输入 train/valid CSV、SID index 和商品 item 文件；输出可继续交给
+    rl.py 使用的模型 checkpoint。
+    """
     # 这是 SFT 的唯一命令行入口；sft.sh 负责提供大部分参数。
     set_seed(seed)
     os.environ['WANDB_PROJECT'] = wandb_project
@@ -152,6 +164,7 @@ def train(
         model = AutoModelForCausalLM.from_config(config)
         print("Training from scratch!")
         
+    # 先记录原始词表长度，再追加 SID token；冻结旧词表时用它划分梯度范围。
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
     original_vocab_size = len(tokenizer)
     tokenizer.pad_token = tokenizer.eos_token
@@ -200,6 +213,7 @@ def train(
         print(f"Trainable parameters (with grad-mask): {trainable_params:,} / "
             f"{total_params:,} ({100*trainable_params/total_params:.2f}%)")
         
+    # 三种监督任务共享同一模型：历史 SID→下一个 SID、SID↔商品特征、融合序列任务。
     train_datasets = []
     # train_data1 = SFTData(train_file=train_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
     train_data1 = SidSFTDataset(train_file=train_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
@@ -228,6 +242,7 @@ def train(
         model.model_parallel = True
     
     sample_frac = 1
+    # HuggingFace Trainer 读取字段字典；DataCollator 稍后把变长一维序列 pad 成 batch。
     hf_train_dataset = HFDataset.from_dict({k: [v[k] for v in train_data] for k in train_data[0].keys()})
     hf_train_dataset = hf_train_dataset.shuffle(seed=42).select(range(int(sample_frac * len(hf_train_dataset))))
     hf_val_dataset = HFDataset.from_dict({k: [v[k] for v in val_data] for k in val_data[0].keys()}).shuffle(seed=seed)

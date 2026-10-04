@@ -1,3 +1,14 @@
+"""TS-Rec 支线的数据集定义。
+
+该文件服务新版 TS-Rec 的 prompt 与特征格式，类名可能与主线 Dataset 相似；
+学习 MiniOneRec 主流程时先跳过，比较两条数据链路时再进入。
+
+TS-Rec 支线：从 SidSFTDataset.get_history/pre 看序列 prompt；再看
+SidTokenFeatDataset.pre 如何用描述训练 SID token；最后比较
+SidItemFeatDataset 与 FusionSeqRecDataset。__getitem__ 返回的是缓存后的
+训练样本，不是原始 CSV 行。
+"""
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset

@@ -1,8 +1,22 @@
-"""Amazon 2018 数据预处理入口。
+"""Amazon18 原始评论与商品元数据的预处理入口（尚不生成 SID）。
 
-阅读顺序：先看命令行参数，再看 metadata/reviews 的清洗、用户/商品过滤和
-train/valid/test 输出。这里主要处理原始 JSON/JSONL；它还不产生模型 token，
-最终每条交互历史仍是长度 H 的列表，SID 转换在 convert_dataset.py 完成。
+第一次阅读从文件末尾 `if __name__ == '__main__'` 开始，沿真实调用顺序向上跳：
+1. parse_args / get_timestamp_start：确定类目、输入文件和时间窗口。
+2. load_reviews_json2csv_style：把 review JSONL 读成字典列表；此处不按时间过滤。
+3. process_dataset_recursive：读取 metadata，验证标题，调用 k_core_filtering_json2csv_style；
+   如果过滤后商品少于 3000 且起始年份大于 1996，就把起始年份向前扩一年重试。
+4. convert_inters2dict_amazon18_style：为用户和商品编连续整数 id。
+5. generate_interaction_list_json2csv_style：逐用户按时间排序；每个目标商品取之前
+   最多 10 次交互作为历史，再把所有样本按目标时间排序。
+6. convert_to_atomic_files_json2csv_style：按全局时间顺序 8:1:1 切分并写 .inter。
+7. create_item_features_amazon18_style / load_review_data_amazon18_style：写商品和评论特征，
+   最后写 .inter.json、.item.json、.review.json、.user2id、.item2id。
+
+关键中间量：reviews 是原始评论列表；filtered_reviews 是过滤后的评论列表；
+item2index 将原始 ASIN 映射到整数商品 id；interaction_list 的每条记录含历史 id
+列表、目标 id、标题、评分和时间。下游 rq/text2emb 读取 .item.json；
+convert_dataset.py 读取 .item.json、.index.json 和 .train/.valid/.test.inter。
+阅读时先盯一条 review 的 reviewerID、asin、unixReviewTime 如何流到一条 .inter 行。
 """
 
 import argparse
@@ -20,7 +34,7 @@ import numpy as np
 
 
 def clean_text(text):
-    """Clean text by removing HTML tags and excessive whitespace"""
+    """清理标题或评论中的 HTML 标签、实体和多余空白，返回单行文本。"""
     if not text:
         return ""
     # Remove HTML tags
@@ -35,18 +49,18 @@ def clean_text(text):
 
 
 def check_path(path):
-    """Create directory if it doesn't exist"""
+    """写输出文件前确保父目录存在。"""
     os.makedirs(path, exist_ok=True)
 
 
 def write_json_file(data, file_path):
-    """Write data to JSON file"""
+    """把字典或列表写为便于检查的缩进 JSON。"""
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=2)
 
 
 def write_remap_index(index_map, file_path):
-    """Write index mapping to file"""
+    """把原始用户/商品标识与连续整数 id 按制表符写到映射文件。"""
     with open(file_path, 'w') as f:
         for original, mapped in index_map.items():
             f.write(f"{original}\t{mapped}\n")
@@ -63,12 +77,33 @@ amazon18_dataset2fullname = {
 
 
 def get_timestamp_start(year, month):
-    """Get timestamp for the start of a given year and month"""
+    """把指定年月的 1 日零点转换为 Unix 秒时间戳，供评论时间过滤。"""
     return int(datetime.datetime(year=year, month=month, day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
 
 
 def load_metadata_json2csv_style(category, metadata_file=None):
-    """Load metadata using json2csv style processing"""
+    """读取商品 JSONL，并筛出标题可用的 ASIN。
+
+    这里的 metadata 不是模型生成的文件，而是 Amazon 原始商品元数据文件。
+    每行通常是一个 JSON 对象，至少包含 `asin` 和 `title`，还可能包含
+    `description`、`brand`、`categories` 等字段。例如：
+    `{"asin": "B001...", "title": "某个商品"}`。
+
+    `metadata_file` 由命令行参数 `--metadata_file` 传入；如果不传，代码按
+    当前工作目录计算默认路径 `../meta_{category}.json`。因此从仓库根目录
+    直接运行时，它会找仓库上一级的文件；从 `data/` 目录运行时，才会找仓库
+    根目录下的 `meta_{category}.json`。当前仓库没有这些原始 `meta_*.json`，
+    只有已经处理好的 `data/Amazon/index/*.item.json`；后者是“整数 item_id →
+    商品特征”的 JSON 对象，格式不同，不能直接当作这里的原始 metadata。
+
+    函数返回 `(metadata, id_title, remove_items)`：`metadata` 是所有原始商品
+    字典的列表；`id_title` 是本函数根据有效标题临时建立的
+    `asin → 清洗后的 title` 字典；`remove_items` 是没有合格标题的 ASIN 集合。
+    后续 k-core 用 `id_title` 判断评论中的 asin 是否可用，滑窗函数用它填充
+    历史标题，最终 `create_item_features_amazon18_style` 再用完整 metadata
+    生成下游的 `.item.json`。
+    """
+    # 注意：这是相对“启动 Python 时的当前目录”，不是相对本文件所在目录。
     if metadata_file is None:
         metadata_file = f'../meta_{category}.json'
     
@@ -80,6 +115,7 @@ def load_metadata_json2csv_style(category, metadata_file=None):
         print(f"Metadata file {metadata_file} not found")
         return [], {}, set()
     
+    # 这里才创建 id_title；调用方没有提前准备这个变量。
     id_title = {}
     remove_items = set()
     
@@ -101,7 +137,11 @@ def load_metadata_json2csv_style(category, metadata_file=None):
 
 
 def load_reviews_json2csv_style(category, reviews_file=None, start_timestamp=None, end_timestamp=None):
-    """Load reviews using json2csv style processing"""
+    """读取 review JSONL 为列表；这里不按时间窗口过滤。
+
+    时间过滤放在 k_core_filtering_json2csv_style 的迭代内，避免读入阶段
+    提前改变参与用户/商品频次统计的样本集合。
+    """
     if reviews_file is None:
         try:
             with open(f'../{category}_5.json') as f:
@@ -126,16 +166,39 @@ def load_reviews_json2csv_style(category, reviews_file=None, start_timestamp=Non
 
 
 def k_core_filtering_json2csv_style(reviews, id_title, K=5, start_timestamp=None, end_timestamp=None):
-    """Perform k-core filtering using json2csv style logic"""
+    """执行推荐数据常用的 K-core 过滤，保留活跃用户和热门商品。
+
+    先理解三个字段：
+
+    - `reviewerID`：Amazon 评论中的用户编号，可以理解为一个用户节点；
+    - `asin`：Amazon Standard Identification Number，商品的唯一编号，可以理解为
+      一个商品节点。它不是商品标题，也不是后面模型使用的整数 item_id；
+    - 一条 review：一条“用户 reviewerID 在时间 unixReviewTime 与商品 asin 发生
+      交互”的记录，同时可能包含评分和评论文本。
+
+    K-core 的目标是让留下来的每个用户至少有 K 条有效交互、每个商品至少被
+    K 条有效交互覆盖。代码先删除没有合格标题的 asin，再在时间窗口内统计用户
+    和商品频次：频次小于 K 的用户/商品加入 remove_users/remove_items；下一轮
+    删除与它们有关的 review 后重新统计。因为删除一个低频商品可能让某个用户
+    也跌到 K 以下，所以必须循环到本轮没有新增删除对象为止。
+
+    小例子（K=2）：A 评价 X、Y，B 评价 X，C 评价 X、Z。第一轮 Y、Z 各只有
+    1 条，B 只有 1 条，会删除 Y、Z 和 B；第二轮 A、C 都只剩 X 这一条，
+    又会删除 A、C；第三轮 X 也没有用户留下。最终可能没有数据，这正是
+    K-core 过滤的级联效果，不是程序漏读。
+
+    返回 `(new_reviews, user_counts, item_counts)`。注意当前实现只使用一个 K，
+    调用处传入的是 `args.user_k`；命令行虽然声明了 `item_k`，但没有单独使用。
+    """
     remove_users = set()
     remove_items = set()
     
-    # Remove items without titles (like json2csv)
+    # 第一轮先删掉没有有效标题的商品；id_title 的键是原始 ASIN。
     for review in reviews:
         if review['asin'] not in id_title:
             remove_items.add(review['asin'])
     
-    # Iterative k-core filtering (exactly like json2csv)
+    # k-core 必须迭代：删掉低频商品后，原本达标的用户也可能跌到 K 以下。
     while True:
         new_reviews = []
         flag = False
@@ -144,11 +207,12 @@ def k_core_filtering_json2csv_style(reviews, id_title, K=5, start_timestamp=None
         item_counts = dict()
         
         for review in tqdm(reviews, desc="K-core filtering"):
-            # Filter by timestamp INSIDE the loop like json2csv
+            # 时间过滤放在每轮统计之前：只有窗口内的 review 才计入频次。
             if start_timestamp and end_timestamp:
                 if int(review["unixReviewTime"]) < start_timestamp or int(review["unixReviewTime"]) > end_timestamp:
                     continue
             
+            # 只要用户或商品已被上一轮淘汰，这条“用户-商品边”也一起淘汰。
             if review['reviewerID'] in remove_users or review['asin'] in remove_items:
                 continue
             
@@ -163,7 +227,8 @@ def k_core_filtering_json2csv_style(reviews, id_title, K=5, start_timestamp=None
             total += 1
             new_reviews.append(review)
         
-        # Mark users/items for removal if below threshold
+        # 本轮频次低于 K 的用户/商品加入永久删除集合，下一轮重新统计。
+        # user_counts 的 key 是 reviewerID，item_counts 的 key 是 ASIN。
         for user in user_counts:
             if user_counts[user] < K:
                 remove_users.add(user)
@@ -185,7 +250,11 @@ def k_core_filtering_json2csv_style(reviews, id_title, K=5, start_timestamp=None
 
 
 def convert_inters2dict_amazon18_style(reviews):
-    """Convert interactions to dict format like amazon18_data_process"""
+    """按用户时间排序，同时建立原始用户/ASIN 到连续整数 id 的映射。
+
+    返回 user2items、user2index、item2index 和 interactions；整数商品 id
+    供 .inter、.item.json 和后续 SID 索引共同使用。这里不生成训练样本窗口。
+    """
     user2items = collections.defaultdict(list)
     user2index, item2index = dict(), dict()
     
@@ -223,7 +292,13 @@ def convert_inters2dict_amazon18_style(reviews):
 
 
 def generate_interaction_list_json2csv_style(reviews, user2index, item2index, id_title):
-    """Generate interaction list like json2csv for 8:1:1 split"""
+    """为每个用户的第 2 次及以后交互构造“历史→当前目标”样本。
+
+    同一用户先按 unixReviewTime 排序；第 i 次交互使用 [max(i-10,0):i]
+    作为历史，所以历史最多 10 项。最后按目标时间全局排序，交给下一函数切分。
+    返回的每项按位置保存用户、历史 ASIN、目标 ASIN、历史/目标整数 id、
+    标题、评分和时间；读下面 append 的 11 个位置时可逐项对照。
+    """
     # Create user interactions similar to json2csv
     interact = dict()
     item2id = {item: idx for item, idx in item2index.items()}
@@ -267,33 +342,37 @@ def generate_interaction_list_json2csv_style(reviews, user2index, item2index, id
         for i in range(1, len(items)):
             st = max(i - 10, 0)
             interaction_list.append([
-                user,                    # user_id
-                items[st:i],            # item_asins (history)
-                items[i],               # item_asin (target)
-                item_ids[st:i],         # history_item_id
-                item_ids[i],            # item_id (target)
-                titles[st:i],           # history_item_title
-                titles[i],              # item_title (target)
-                ratings[st:i],          # history_rating
-                ratings[i],             # rating (target)
-                timestamps[st:i],       # history_timestamp
-                timestamps[i]           # timestamp (target)
+                user,                    # 原始用户 id
+                items[st:i],            # 历史商品 ASIN 列表
+                items[i],               # 当前目标商品 ASIN
+                item_ids[st:i],         # 历史商品整数 id 列表
+                item_ids[i],            # 目标商品整数 id
+                titles[st:i],           # 历史商品标题列表
+                titles[i],              # 目标商品标题
+                ratings[st:i],          # 历史评分列表
+                ratings[i],             # 目标评分
+                timestamps[st:i],       # 历史时间戳列表
+                timestamps[i]           # 目标时间戳
             ])
     
-    # Sort by timestamp for chronological split
+    # 先把所有用户的样本合并并按目标时间排序，下一函数才按 8:1:1 切分。
     interaction_list.sort(key=lambda x: int(x[-1]))
     return interaction_list
 
 
 def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
-    """Convert interaction list to train/valid/test files using 8:1:1 split like json2csv"""
+    """把已按目标时间排序的样本按 80%/10%/10% 切为 .inter 文件。
+
+    每行是 `user_id:token`、空格分隔的历史 `item_id_list:token_seq`、
+    目标 `item_id:token`。写入的是整数 id，不是 SID；SID 在后续转换步骤加入。
+    """
     print('Convert dataset: ')
     print(' Dataset: ', args.dataset)
     
     # Create output directories
     check_path(os.path.join(args.output_path, args.dataset))
     
-    # Split 8:1:1 like json2csv
+    # 切分单位是滑窗样本，不是用户；同一用户的样本可能跨 train/valid/test。
     total_len = len(interaction_list)
     train_end = int(total_len * 0.8)
     valid_end = int(total_len * 0.9)
@@ -349,7 +428,11 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
 
 
 def load_review_data_amazon18_style(reviews, user2index, item2index):
-    """Load review data like amazon18_data_process"""
+    """为保留的评论建立 (用户 id, 商品 id, 时间) 到文本特征的映射。
+
+    reviewText 和 summary 经 clean_text 清洗，写入 .review.json；它与 .inter
+    训练样本不同，不参与这里的时间切分。
+    """
     review_data = {}
     
     for review in tqdm(reviews, desc='Load reviews'):
@@ -387,7 +470,11 @@ def load_review_data_amazon18_style(reviews, user2index, item2index):
 
 
 def create_item_features_amazon18_style(metadata, item2index, id_title):
-    """Create item features like amazon18_data_process"""
+    """只为过滤后保留的商品生成 .item.json 特征。
+
+    通过 item2index 对齐整数商品 id；从 metadata 提取标题、描述、品牌和类别。
+    下游文本向量脚本主要读取 title 与 description。
+    """
     item2feature = collections.defaultdict(dict)
     
     # Create a mapping from asin to metadata
@@ -439,7 +526,13 @@ def create_item_features_amazon18_style(metadata, item2index, id_title):
 
 
 def process_dataset_recursive(args, metadata, reviews, start_timestamp, end_timestamp):
-    """Process dataset with recursive year reduction like json2csv"""
+    """读取元数据并进行时间窗内的迭代 k-core 过滤。
+
+    若保留商品少于 3000 且起始年份仍大于 1996，修改 args.st_year 并递归重试。
+    参数 metadata 在当前实现中只是历史遗留参数，调用时传入 None；函数内部
+    重新调用 load_metadata_json2csv_style，并从 args.metadata_file 读取真正的
+    外部文件。只返回过滤结果和 metadata；映射、滑窗、切分在文件末尾入口继续执行。
+    """
     
     # Load metadata 
     metadata, id_title, remove_items = load_metadata_json2csv_style(
@@ -545,7 +638,7 @@ if __name__ == '__main__':
         args, interaction_list, user2index
     )
     
-    # Generate user2items for compatibility with amazon18 format
+    # 用户→商品序列另存 JSON，供其他读取方式使用；它不替代上面的 .inter。
     user2items_final = collections.defaultdict(list)
     for user_idx, item_list in user2items.items():
         user2items_final[user_idx] = item_list

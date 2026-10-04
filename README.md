@@ -1,3 +1,5 @@
+<!-- MiniOneRec 项目总览：先读 Key Techniques 理解 SID/SFT/RL 三阶段，再读 Repository Overview 找入口文件。 -->
+<!-- 首次按源码学习请打开 导学-MiniOneRec.md；README 的 Quickstart 面向已有模型与 GPU 的运行者。 -->
 <div align="center">
 
 

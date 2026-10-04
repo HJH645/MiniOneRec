@@ -1,4 +1,8 @@
 #!/bin/bash
+# 阅读导航：
+# TS-Rec 支线入口；先核对 train/valid CSV、SID 索引和描述关键词文件。
+# 然后按参数进入 ts_rec_sft.py:train；与主线 sft.sh 比较额外任务和新增 SID token 的初始化方式。
+# TS-Rec SFT 启动脚本：服务 TS-Rec 支线，参数和主线 sft.sh 不完全相同。
 export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 
 DATASET="Industrial_and_Scientific"

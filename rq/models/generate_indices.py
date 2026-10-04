@@ -1,3 +1,11 @@
+"""RQ-VAE 索引生成脚本的另一份实现，导入时即执行顶层代码。
+
+从 dataset/ckpt_path/output_dir 开始，按“加载 checkpoint → EmbDataset →
+RQVAE.get_indices → 重新分配碰撞 SID → 写 index.json”的顺序阅读。
+它与 rq/generate_indices.py 都是可独立运行的脚本，不是被主线 import 的工具；
+首次阅读只看主线版本，之后比较两份脚本的配置路径和碰撞处理差异。
+"""
+
 import collections
 import json
 import logging

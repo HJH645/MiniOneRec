@@ -1,3 +1,13 @@
+"""TS-Rec 支线的监督训练入口。
+
+它与 sft.py 都使用语言模型训练，但 prompt 任务和特征输入不同；
+先阅读主线 SFT，再把本文件作为变体对照。
+
+TS-Rec 支线：从 train 看数据集拼接和词表扩展；
+initialize_sid_token_with_text 用文本关键词初始化新增 SID token 表示。
+与 sft.py 比较时先盯新增任务、初始化方式和 Dataset 输出。
+"""
+
 import os
 import sys
 import numpy as np 

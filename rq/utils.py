@@ -1,3 +1,12 @@
+"""RQ 训练公共工具。
+
+本文件提供目录创建、日志颜色和时间格式化等小工具，供 rq/rqvae.py 与
+rq/trainer.py 使用；它不改变模型结构，也不参与 SID 的计算。
+
+先从 rq/trainer.py 的 import 找调用点：ensure_dir 建目录、
+get_local_time 生成 checkpoint 时间名、set_color 格式化日志；
+delete_file 只处理文件清理。这里没有模型计算。
+"""
 
 import datetime
 import os

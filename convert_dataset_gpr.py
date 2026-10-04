@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Convert dataset (Office/Industrial_and_Scientific) to MiniOneRec format with semantic IDs
+
+GPR 支线：从 main 看 item/index/inter 的加载，再看
+convert_interactions_to_csv 写出的字段；对照 convert_dataset.py 重点找
+异构 token 及字段变化。输出 CSV 交给 GPR 的 SFT/RL Dataset 使用。
 """
 
 import json

@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-FAISS ResidualQuantizer  +  Sinkhorn-based Uniform Semantic Mapping
-===================================================================
+"""基于 FAISS 的 RQ-Kmeans SID 构造替代方案。
+
+它把商品 embedding 分层聚类并保存 codebook，适合与 rqvae.py 对照阅读；
+该支线不是默认 RQ-VAE 训练流程。
+
+RQ-Kmeans 替代路线：从 main 看 embedding 加载 → train_faiss_rq
+→ encode_with_rq → sinkhorn_uniform_mapping → save_indices_json。
+先看每层 codes 的 shape 和输出 item→SID 格式，再研究 Sinkhorn 细节。
 """
 
 import argparse

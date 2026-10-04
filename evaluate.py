@@ -4,6 +4,12 @@
 函数。每条样本 input_ids 原本是 (L_i,)，一个 batch 左 padding 为 (B,maxLen)，
 beam 生成得到 sequences=(B*num_beams,maxLen+newTokens)，切掉 prompt 后按
 num_beams 分组为候选列表，结果写入 JSON 供 calc.py 计算 HR/NDCG。
+
+从 main 看 info_file 读出合法 SID → tokenizer 编码 → hash_dict 建立
+“前缀→允许的下一 token” → EvalSidDataset 构造 prompt。内部 evaluate
+函数做左 padding、ConstrainedLogitsProcessor、beam search、去掉 prompt
+并按 num_beams 分组。外层批处理把 predict 写入 JSON；calc.py 再算指标。
+若换 tokenizer，先核对 prefix_index 和第一个生成 token 的前缀键。
 """
 
 import pandas as pd
@@ -56,6 +62,11 @@ def main(
     max_new_tokens: int = 256,
     num_beams: int = 50,
 ):
+    """加载模型和合法 SID，给测试 CSV 逐条生成候选并写 JSON。
+
+    运行入口是 evaluate.sh；本函数先建立前缀表，再调用内部 evaluate
+    对一个 batch 做约束生成。输出的 output 是真实目标，predict 是候选列表。
+    """
     random.seed(seed)
     set_seed(seed)
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -90,7 +101,7 @@ def main(
     else:
         prefix_index = 3
     
-    # Build hash_dict for semantic IDs (existing functionality)
+    # 对每个合法 SID 的 token 序列逐位建前缀表：键是已生成部分，值是可选下一 token。
     hash_dict = dict()
     # print(f"eos token: {tokenizer.eos_token_id}")
     for index, ID in enumerate(prefixID):
@@ -147,6 +158,7 @@ def main(
     tokenizer.padding_side = "left"
     
     # val_dataset = EvalD3Dataset(train_file=test_data_path, tokenizer=tokenizer, max_len=2560, category=category, test=True, K=K, seed=seed)
+    # test=True 只编码历史 prompt；真实答案留在 get_all 的 output 供写结果 JSON。
     val_dataset = EvalSidDataset(train_file=test_data_path, tokenizer=tokenizer, max_len=2560, category=category, test=True, K=K, seed=seed)
         
     encodings = [val_dataset[i] for i in range(len(val_dataset))]
@@ -175,6 +187,7 @@ def main(
             attention_mask.append([0] * (maxLen - L) + [1] * L) 
         
         # print(f"num_beams: {num_beams}")
+        # num_return_sequences=num_beams：每条样本保留与 beam 数相同的排序候选。
         generation_config = GenerationConfig(
             num_beams=num_beams,
             length_penalty=length_penalty,
@@ -251,6 +264,7 @@ def main(
     for i in range(len(test_data)):
         if 'dedup' in test_data[i]:
             test_data[i].pop('dedup')  
+    # 每条 JSON 含真实 output 和预测 predict；calc.py 不再运行模型。
     with open(result_json_data, 'w') as f:
         json.dump(test_data, f, indent=4)
 

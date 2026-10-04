@@ -7,6 +7,19 @@ convert_interactions_to_csv -> main。输入是 item/index/inter 文件，输出
 info 文本和 train/valid/test CSV。单行 history 长度为 H，转换后仍是 H 个
 原始 id、H 个 SID 字符串和一个目标 SID，不会在这里做 tokenizer；token shape
 要等 data.py 的 Dataset 才确定。
+
+第一次阅读从末尾 main() 开始：load_dataset 读同一目录下的 .item.json、.index.json 和三份
+.inter；create_item_info_file 写“完整 SID、标题、整数 id”的 info 文本；
+convert_interactions_to_csv 逐行把历史/目标整数 id 查成 SID，写训练 CSV。
+再回到 semantic_tokens_to_id 看 [<a_1>,<b_2>,<c_3>] 如何直接拼接。
+一条 .inter 行是“用户 id、空格分隔历史 id、目标 id”；输出 CSV 的列表列
+由 Pandas 序列化为字符串，data.py 会重新解析。目标无 SID 的样本被跳过；
+训练集是否只保留每个用户最长历史由 --keep_longest_only 决定。
+
+注意：本文件不负责训练 RQ-VAE，也不负责生成 index.json。它只读取前面两个
+阶段已经产生的文件：amazon18_data_process.py 的 `.item.json/.inter`，以及
+rq/generate_indices.py 的 `.index.json`。三者必须使用同一类目、同一套整数
+item_id；否则会出现找不到 SID、样本被跳过或商品标题错配。
 """
 
 import json
@@ -17,7 +30,12 @@ from typing import Dict, List, Any
 import argparse
 
 def load_dataset(data_dir: str, dataset_name: str) -> Dict[str, Any]:
-    """Load all dataset files"""
+    """读取一个类目的三类输入，返回 items、item_to_semantic 和 splits。
+
+    items 来自 .item.json，键是字符串化的整数商品 id；item_to_semantic 来自
+    .index.json，值是每层 SID token 的列表；splits 中每一行按制表符拆为三列。
+    这里只读入和拆行，不替换 SID，也不做训练/验证切分。
+    """
     data = {}
     
     # Load item metadata (id -> {title, description, ...})
@@ -41,12 +59,15 @@ def load_dataset(data_dir: str, dataset_name: str) -> Dict[str, Any]:
     return data
 
 def semantic_tokens_to_id(tokens: List[str]) -> str:
-    """Convert semantic tokens list to concatenated string with brackets preserved"""
+    """将多层 token 无分隔符拼成完整 SID，例如 <a_1><b_2><c_3>。"""
     # Keep brackets and concatenate directly (no spaces)
     return ''.join(tokens)
 
 def create_item_info_file(items: Dict[str, Dict], item_to_semantic: Dict[str, List], output_path: str):
-    """Create item info file (sid -> title -> item_id mapping)"""
+    """将有 SID 的商品写为三列：完整 SID、标题、整数商品 id。
+
+    后续 evaluate.py 用第一列构建合法候选前缀表；calc.py 用它核对商品。
+    """
     with open(output_path, 'w', encoding='utf-8') as f:
         for item_id, item_data in items.items():
             # Get semantic ID from index mapping
@@ -61,7 +82,12 @@ def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict],
                                item_to_semantic: Dict[str, List], output_dir: str, category: str = "Office_Products",
                                max_valid_samples: int = None, max_test_samples: int = None, seed: int = 42,
                                keep_longest_only: bool = True):
-    """Convert interaction data to MiniOneRec CSV format using semantic IDs"""
+    """逐 split 转换 .inter 三列为训练/评估 CSV。
+
+    历史 id 与目标 id 分别查 index.json 得 SID；目标没有 SID 时跳过该行。
+    训练集的“每用户只留最长历史”仅在 keep_longest_only=True 时生效；
+    验证/测试采样上限由对应参数控制。输出路径由调用者传入 split 子目录。
+    """
     
     import random
     random.seed(seed)
@@ -166,6 +192,11 @@ def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict],
                 print(f"    item_title: {rows[0]['item_title'][:50]}...")
 
 def main():
+    """命令行总入口：加载三类输入、生成 info，再逐 split 输出 CSV。
+
+    先检查 data_dir 下同名 item/index/inter 文件，再看 output_dir 下四个
+    子目录的产物。参数 keep_longest_only 默认关闭。
+    """
     parser = argparse.ArgumentParser(description='Convert dataset (Office_Products/Industrial_and_Scientific) to MiniOneRec format with semantic IDs')
     parser.add_argument('--data_dir', type=str, 
                        help='Path to dataset directory')

@@ -1,3 +1,9 @@
+"""Amazon 2023 数据预处理入口。
+
+本文件把 Amazon23 的 review/metadata 格式整理成项目后续使用的交互数据，
+并处理时间戳、k-core 过滤和 train/valid/test 切分；它不生成 SID。
+"""
+
 import argparse
 import collections
 import json

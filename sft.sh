@@ -1,3 +1,7 @@
+# 阅读导航：
+# 阅读顺序：先核对 train/valid CSV 与 index/item JSON，再看 torchrun 参数，最后进入 sft.py:train。
+# --batch_size 是目标全局 batch，--micro_batch_size 是每进程一次前向的样本数；训练代码据此计算梯度累积。
+# --freeze_LLM 决定是否只更新新增 SID 词表行；示例中的模型、输出和 wandb 路径都需替换。
 # MiniOneRec SFT 启动脚本：读取 train/valid/test 和 SID 索引，调用 sft.py。
 # 先阅读这里的参数，再进入 sft.py:train；默认需要 8 张 GPU。
 export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE

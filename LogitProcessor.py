@@ -4,6 +4,11 @@
 scores=(B,V)；有 K 个 beam 时 Transformers 展平为 (B*K,L)/(B*K,V)。处理器
 根据已生成前缀查允许 token，合法位置加 0、非法位置保留 -inf，返回同形状
 (B*K,V) 的分数。count 表示当前生成步，每次 generate 前应创建新实例。
+
+从 ConstrainedLogitsProcessor.__call__ 的双层循环看：每个 batch 的每个
+beam 取已生成后缀，调用 prefix_allowed_tokens_fn 查合法 token，
+用 -inf mask 屏蔽其他词。查不到前缀时仅放行 EOS（若配置了 EOS），
+同时发出警告。count 记录本次 generate 的步数，不能跨请求复用实例。
 """
 
 from transformers.generation import LogitsProcessor

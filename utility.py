@@ -1,3 +1,13 @@
+"""传统序列推荐模型的通用数据与指标工具。
+
+本文件为 SASRec 等基线提供 padding、命中率和数据处理函数，
+在 MiniOneRec 主线中主要由 sasrec.py 的可选协同过滤奖励调用。
+
+传统推荐模型的辅助函数：先看 sasrec.py 实际调用的 pad_history、
+extract_axis_1、calculate_hit，再按需读 NeuProcessEncoder/MemoryUnit。
+这些函数处理商品 id 序列与传统 Top-K 指标，不生成 SID。
+"""
+
 import os
 import numpy as np
 import pandas as pd

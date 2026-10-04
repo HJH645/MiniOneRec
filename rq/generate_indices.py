@@ -3,6 +3,14 @@
 阅读顺序：加载 checkpoint -> EmbDataset -> RQVAE.get_indices -> collision
 检查/重算 -> 写入 index.json。输入 batch 是 (B,D)，get_indices 返回
 indices=(B,L)，L 为量化层数；写盘后每个商品对应 L 个形如 <a_i> 的字符串。
+
+这个文件在模块顶层直接执行，阅读时从 dataset/ckpt_path/output_dir 三个
+变量往下走：加载 checkpoint 参数 → EmbDataset → RQVAE.get_indices →
+每层索引格式化为 <a_i>/<b_j>/<c_k> → 碰撞检查和重分配 → 写 index.json。
+这里才真正生成 `商品整数 id → SID token 列表` 的映射；整数 id 来自 embedding
+数组的行号（第 0 行对应商品 0），因此 embedding 必须由同一批 `.item.json`
+按相同商品顺序生成，不能拿另一份商品文件的 embedding 混用。
+运行前必须核对硬编码路径；输出中的商品顺序依赖 embedding 行顺序。
 """
 
 import collections
@@ -149,6 +157,7 @@ print("Collision Rate",(tot_item-tot_indice)/tot_item)
 
 all_indices_dict = {}
 for item, indices in enumerate(all_indices.tolist()):
+    # item 是 embedding 行号，也是后续 convert_dataset.py 使用的整数 item_id。
     all_indices_dict[item] = list(indices)
 
 

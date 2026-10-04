@@ -3,6 +3,11 @@
 阅读入口：_train_epoch -> RQVAE.compute_loss；_valid_epoch -> get_indices。
 训练 batch=(B,D)，模型输出 out=(B,D)、rq_loss 标量、indices=(B,L)；验证把
 每行 indices 拼成字符串，计算重复 SID 的比例。
+
+从 Trainer.fit 开始：每轮调用 _train_epoch 做 forward/反传，再调用
+_valid_epoch 通过 get_indices 检查 SID 碰撞率，最后按条件调用
+_save_checkpoint。看 _train_epoch 时把 RQVAE.forward 的三项输出
+(out, rq_loss, indices) 对到 compute_loss 的重建损失和量化损失。
 """
 
 import logging
@@ -19,6 +24,11 @@ import os
 
 import heapq
 class Trainer(object):
+    """RQ-VAE 的训练、验证和 checkpoint 管理器。
+
+    本类不定义量化算法，只负责取 batch、调用模型 forward/compute_loss、
+    反向传播，并在验证时统计 SID 碰撞率。
+    """
 
     def __init__(self, args, model, data_num):
         self.args = args
@@ -103,7 +113,7 @@ class Trainer(object):
 
 
     def _train_epoch(self, train_data, epoch_idx):
-
+        """训练一轮：embedding → 重建/量化损失 → 反向传播。"""
         self.model.train()
 
         total_loss = 0
@@ -134,7 +144,7 @@ class Trainer(object):
 
     @torch.no_grad()
     def _valid_epoch(self, valid_data):
-
+        """验证重建损失，并统计量化索引重复的比例。"""
         self.model.eval()
 
         iter_data =tqdm(
@@ -257,6 +267,5 @@ class Trainer(object):
 
 
         return self.best_loss, self.best_collision_rate
-
 
 

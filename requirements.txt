@@ -1,3 +1,7 @@
+# 阅读导航：先找 torch/transformers/trl 对应模型、生成和 GRPO；
+# 再找 accelerate/deepspeed 对应多 GPU 启动；其余依赖按 import 报错追溯。
+# 版本会影响 generate 的默认参数和训练器接口，复现实验应以此文件为准。
+# MiniOneRec 运行依赖清单：SFT、GRPO、RQ-VAE、分布式训练和评估共用。
 accelerate==1.10.1
 torch==2.6.0
 torchaudio==2.6.0

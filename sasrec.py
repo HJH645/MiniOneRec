@@ -3,6 +3,10 @@
 第一遍先看 SASRec.forward_eval：states=(B,S)，Embedding 后为 (B,S,H)，
 经过注意力和前馈仍保持 (B,S,H)，gather 最后有效位置得到 (B,1,H)，
 线性层输出商品分数 (B,item_num)。GRU/Caser 是可替代基线，不是 MiniOneRec 主线。
+
+作为 RL 可选 CF 奖励时先读 SASRec.forward_eval：历史商品 id → embedding
+→ 自注意力/前馈 → 最后有效状态 → 所有商品分数；随后读 rl.py:cf_reward
+如何用分数。文件中的 GRU、Caser、独立 main 是传统基线，主线暂缓。
 """
 
 import numpy as np

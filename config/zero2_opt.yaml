@@ -1,3 +1,7 @@
+# 阅读导航：rl.sh 的 accelerate --config_file 指向本文件。
+# distributed_type=DEEPSPEED 选择训练后端，num_processes 由启动命令指定；
+# zero_stage=2 将优化器状态与梯度按进程切分，mixed_precision=bf16 控制精度。
+# 先理解 rl.py 单进程的数据和 loss，再用这里解释多 GPU 参数如何分布。
 # DeepSpeed ZeRO-2 配置：供 rl.sh 的 accelerate 使用。
 # 先理解 sft/rl 单卡逻辑，再学习这里的参数切分和 bf16。
 compute_environment: LOCAL_MACHINE

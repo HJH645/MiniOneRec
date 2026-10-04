@@ -1,4 +1,8 @@
 #!/bin/bash
+# 阅读导航：
+# 这是 RQ-VAE 的替代方案；先看 embedding 路径、类别和输出目录。
+# Python 入口 rqkmeans_constrained.py 执行各层均衡聚类和重复码分析，检查产物再进入数据转换。
+# 约束 RQ-Kmeans 训练脚本：为商品 embedding 生成容量更均衡的 code。
 #
 # RQ-KMeans Constrained Training Script
 #

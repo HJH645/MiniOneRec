@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-RQ-KMeans with Constrained Balanced Clustering
-===============================================
-Uses k-means-constrained to ensure balanced cluster sizes
+"""带均衡约束的 RQ-Kmeans SID 构造脚本。
+
+它在聚类时控制各 code 的容量，降低多个商品得到相同 SID 的概率；
+输入是商品 embedding，输出供后续数据转换使用的聚类结果。
+
+约束聚类替代路线：从末尾主入口看参数和 embedding 加载，再跟
+residual_kmeans_constrained 的层级循环；balanced_kmeans_level_constrained
+控制每层簇容量，deal_with_deduplicate 处理重复码。对照输出文件与
+RQ-VAE 的 index.json 是否满足 convert_dataset.py 的输入约定。
 """
 
 import os

@@ -1,3 +1,14 @@
+"""Amazon18 的 GPR 特征预处理支线。
+
+它在基础交互清洗之外抽取 GPR 所需的异构特征；先掌握
+data/amazon18_data_process.py 的主线，再阅读本文件。
+
+GPR 支线：从末尾主入口跟 process_dataset_recursive、
+generate_interaction_list_json2csv_style、convert_to_atomic_files_json2csv_style；
+之后重点看 create_item_features_amazon18_style 和 create_user_features
+额外写了哪些特征。基础过滤逻辑可对照 amazon18_data_process.py。
+"""
+
 import argparse
 import collections
 import gzip

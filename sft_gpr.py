@@ -1,3 +1,12 @@
+"""GPR/VAFT 版本的监督微调入口。
+
+它在主线 SFT 的损失计算上加入模拟商品价值权重；主线学习请先阅读 sft.py。
+
+GPR 支线：先看 train 相对 sft.py 多了哪些 Dataset 和参数，再看
+VAFT_Trainer.compute_loss 如何按样本价值调整监督损失；TokenExtender
+仍负责读取 SID 词表。建议用相同 CSV 样本比较两个入口的 labels。
+"""
+
 import os
 import sys
 from typing import List

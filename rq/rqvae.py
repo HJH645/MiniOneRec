@@ -3,6 +3,11 @@
 阅读顺序：parse_args -> EmbDataset -> RQVAE -> Trainer.fit。输入 embedding
 batch 是 (B,D)，RQVAE 输出重建向量 (B,D)、量化 loss 标量和 indices=(B,L)，
 其中 L=len(num_emb_list)，当前默认 L=3。
+
+从末尾 __main__ 开始：parse_args 确定 embedding 路径、网络层数、码本大小；
+EmbDataset/DataLoader 读取 (B,D) 向量；RQVAE 构建编码器、残差量化器和
+解码器；Trainer.fit 负责训练、验证及 checkpoint。先看一轮训练数据如何
+流入模型，再追配置项，不要先逐项研究 argparse。
 """
 
 import argparse
@@ -74,7 +79,10 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
 
     """build dataset"""
+    # 读取 embedding，构建 RQVAE 和 DataLoader。
     data = EmbDataset(args.data_path)
+    # data.dim 是输入 embedding 维度 D；num_emb_list 决定 SID 层数和每层 code 数，
+    # e_dim 是 encoder 压缩后的连续空间维度。
     model = RQVAE(in_dim=data.dim,
                   num_emb_list=args.num_emb_list,
                   e_dim=args.e_dim,
@@ -94,6 +102,7 @@ if __name__ == '__main__':
     data_loader = DataLoader(data,num_workers=args.num_workers,
                              batch_size=args.batch_size, shuffle=True,
                              pin_memory=True)
+    # Trainer 内部负责调用 model.forward、compute_loss、反传和 checkpoint。
     trainer = Trainer(args,model, len(data_loader))
     best_loss, best_collision_rate = trainer.fit(data_loader)
 
